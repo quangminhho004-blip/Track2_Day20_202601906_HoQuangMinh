@@ -26,13 +26,14 @@
 - **Model đã dùng:** Gemma 4 E2B (`LAB_MODEL=gemma4-e2b`)
 - **Quantization:** UD-Q4_K_XL (primary, 2.97 GB) + UD-Q2_K_XL (compare, 2.24 GB)
 
-**Chạy ở đâu:** laptop của tôi (local, không dùng cloud fallback — RAM 48GB thừa yêu
-cầu 8GB).
+**Chạy ở đâu:** em chạy local trên laptop của mình, không cần dùng cloud fallback vì
+48GB RAM đã dư quá nhiều so với yêu cầu 8GB.
 
-**Setup story** (≤ 80 chữ): Máy chỉ có Python 3.9.6 hệ thống (không có brew/cmake), nhưng
-`make setup` vẫn chạy được vì Makefile không đòi `python_requires>=3.10` từ pyproject
-(chỉ `pip install -r requirements.txt`). Không có bước nào fail; setup + 5.2GB model
-tải xong sạch trong một lần chạy.
+**Setup story** (≤ 80 chữ): Máy em chỉ có Python 3.9.6 hệ thống, không có brew hay
+cmake sẵn. Em cứ nghĩ `make setup` sẽ báo lỗi vì pyproject ghi `python_requires>=3.10`,
+nhưng hoá ra không sao — Makefile chỉ chạy `pip install -r requirements.txt` chứ không
+`pip install -e .`, nên bản 3.9 vẫn ăn. Setup và tải 5.2GB model trôi chảy, không vướng
+bước nào.
 
 ---
 
@@ -45,10 +46,11 @@ tải xong sạch trong một lần chạy.
 | UD-Q4_K_XL | 2.97 | 2044 | 74 / 209 | 11.6 / 11.8 | 795 / 944 / 944 | 86.4 |
 | UD-Q2_K_XL | 2.24 | 2024 | 73 / 288 | 10.8 / 11.5 | 752 / 1011 / 1011 | 93.0 |
 
-**Quan sát** (≤ 60 chữ): Q2 chỉ nhanh hơn Q4 1.08x (93.0 vs 86.4 tok/s), nhẹ hơn 0.73GB.
-Đã hỏi cùng câu ở cả hai (`--compare`, temp=0): cả hai trả lời đúng, không phân biệt
-được chất lượng trên câu hỏi factual ngắn. Với 48GB RAM dư dả, mức tăng tốc nhỏ không
-đáng đánh đổi rủi ro chất lượng trên task khó hơn — Q4 là default hợp lý ở đây.
+**Quan sát** (≤ 60 chữ): Q2 chỉ nhanh hơn Q4 có 1.08x (93.0 vs 86.4 tok/s), nhẹ hơn có
+0.73GB — không đáng kể lắm. Em thử hỏi cùng một câu ở cả hai bản (`--compare`, temp=0)
+thì cả hai đều trả lời đúng, không phân biệt được chất lượng khác nhau chỗ nào trên
+câu hỏi factual ngắn này. Máy em 48GB RAM dư dả nên mức tăng tốc nhỏ như vậy không
+đáng để đánh đổi rủi ro tụt chất lượng ở những task khó hơn — em vẫn chọn Q4 làm default.
 
 ---
 
@@ -68,15 +70,16 @@ tải xong sạch trong một lần chạy.
 **Peak `llamacpp:n_busy_slots_per_decode`** (từ `make metrics` khi `make load-50` đang
 chạy): 3.97 / 4 slots
 
-**Saturation reading** (≤ 80 chữ): Bão hoà ở ngay 10 users, không phải giữa 10 và 50.
-Bằng chứng thuyết phục nhất: busy_slots giữ ở 3.94-3.97/4 suốt 60s load-50, với
-~42-46 request bị deferred liên tục — 4 slot luôn bận, không có chỗ trống cho tải
-thêm. Throughput chỉ tăng 1.11x trong khi P95 tăng 3.68x → phần latency thêm gần như
-toàn bộ là queue time (chờ slot), không phải compute time (mỗi request vẫn tốn cùng
-lượng compute khi tới lượt). Muốn tăng goodput@SLO, tôi sẽ tăng `--parallel` trước —
-đúng knob vì nghẽn hiện tại là số slot, không phải tốc độ per-token (threads đã là
-knob bậc hai dưới Metal offload theo §5, và đổi quantization chỉ giảm nhẹ compute chứ
-không thêm capacity xếp hàng).
+**Saturation reading** (≤ 80 chữ): Theo em thì server bão hoà ngay từ 10 users rồi,
+không phải đợi đến giữa 10 và 50 mới bão hoà. Bằng chứng rõ nhất là busy_slots giữ
+nguyên ở 3.94-3.97/4 suốt 60 giây chạy load-50, cộng thêm ~42-46 request cứ bị
+deferred liên tục — nghĩa là 4 slot lúc nào cũng bận, chẳng còn chỗ trống nào cho tải
+thêm cả. Throughput chỉ nhích 1.11x trong khi P95 lại tăng tới 3.68x, nên gần như toàn
+bộ phần latency dôi ra đó là thời gian chờ slot chứ không phải compute — mỗi request
+vẫn tốn đúng chừng đó compute khi tới lượt nó. Nếu phải tăng goodput@SLO, em sẽ tăng
+`--parallel` trước tiên, vì nghẽn ở đây là số slot chứ không phải tốc độ per-token
+(threads đã là knob bậc hai dưới Metal offload như em nói ở §5, còn đổi quantization
+thì chỉ giảm nhẹ compute chứ không thêm capacity để xếp hàng).
 
 ---
 
@@ -99,11 +102,13 @@ không thêm capacity xếp hàng).
 - llm: 449.6 ms
 - **stage chiếm nhiều nhất:** llm (100% của total)
 
-**Reflection** (≤ 60 chữ): llm chiếm 100% vì đây là stage duy nhất làm việc thật — N19
-là keyword match rẻ, N17 là embedding bị skip. Không hẳn khớp kỳ vọng "RAG thật" (nơi
-retrieve + embed cũng tốn), nhưng đúng với pipeline đã stub. Muốn giảm 2x: tấn công
-prefill của llm (giới hạn độ dài context retrieve, prompt caching cho prefix chung),
-không phải decode — decode đã ~11-12ms/token, ít dư địa dưới Metal offload.
+**Reflection** (≤ 60 chữ): llm chiếm trọn 100% cũng dễ hiểu thôi, vì đây là stage duy
+nhất thật sự làm việc — N19 chỉ là keyword match rẻ tiền, còn N17 (embedding) thì bị
+skip luôn. Nó không giống một pipeline RAG "thật" (nơi retrieve và embed cũng ngốn
+thời gian), nhưng đúng với cái pipeline đã stub sẵn ở đây. Nếu phải giảm latency 2x,
+em sẽ nhắm vào phần prefill của llm trước — giới hạn độ dài context retrieve, hoặc
+prompt caching cho phần prefix chung — chứ không đụng vào decode, vì decode đã
+~11-12ms/token rồi, dưới Metal offload thì cũng chẳng còn nhiều dư địa để cắt nữa.
 
 ---
 
@@ -124,26 +129,31 @@ speedup: 1.07×
 
 **Tại sao nó work** (1–2 đoạn):
 
-Máy này chạy `ngl=99` — mọi layer offload lên Metal GPU của M4 Pro, nên các phép nhân
-ma trận của decode (thứ mà thread count CPU thường parallelize) không chạy trên CPU
-nữa. Đó là lý do curve không giống thread sweep CPU-only cổ điển: `-t 1` (89.3) và
-`-t 14` (88.6) chỉ chênh ~1%, gần như noise, không phải compute scaling — nếu decode
-compute-bound trên CPU, 14 thread phải nhanh hơn 1 thread gần 14 lần. Các CPU thread ở
-đây chạy vòng lặp host-side giữa các lần dispatch GPU (sampling, bookkeeping KV-cache,
-xếp lệnh Metal command buffer tiếp theo); một số ít thread (~7) đủ để pipeline vòng
-lặp đó mà không bị idle, đó là nguồn của mức tăng 6% nhỏ. `-t 28` giảm 21% vì yêu cầu
-gấp đôi số core vật lý, buộc scheduler time-slice trên một workload mà mỗi thread
-phần lớn thời gian chỉ chờ GPU trả kết quả — oversubscription cộng thẳng overhead
-chuyển ngữ cảnh vào critical path mà không có lợi ích compute nào bù lại.
+Máy em chạy `ngl=99`, tức là mọi layer đều được đẩy lên Metal GPU của M4 Pro, nên các
+phép nhân ma trận trong decode — cái mà thread count CPU vẫn hay parallelize — không
+còn chạy trên CPU nữa. Đó cũng là lý do vì sao đường cong sweep của em không giống
+kiểu thread sweep CPU-only thường thấy: `-t 1` (89.3) và `-t 14` (88.6) chỉ lệch nhau
+khoảng 1%, gần như là nhiễu chứ không phải do compute scale theo thread. Nếu decode mà
+compute-bound trên CPU thật thì 14 thread phải nhanh hơn 1 thread gần 14 lần chứ không
+phải chỉ nhích nhẹ như vậy. Ở đây các CPU thread chỉ chạy cái vòng lặp phía host giữa
+các lần gọi GPU thôi — sampling, ghi sổ KV-cache, xếp lệnh cho Metal command buffer kế
+tiếp — nên chỉ cần một số ít thread (khoảng 7) là đủ để pipeline vòng lặp đó chạy trơn
+tru không bị idle, và mức tăng 6% em thấy ở `-t 7` chính là từ đó. Còn `-t 28` thì tụt
+hẳn 21%, vì em yêu cầu gấp đôi số core vật lý, buộc scheduler phải time-slice trên một
+workload mà phần lớn thời gian mỗi thread chỉ ngồi chờ GPU trả kết quả — oversubscribe
+kiểu này cộng thẳng overhead chuyển ngữ cảnh vào critical path mà chẳng đổi lại được
+gì về compute.
 
-**Kết quả này khác kỳ vọng từ deck**: deck mô tả peak ở physical core count rồi giảm
-khi vượt qua — đúng cho decode chạy trên CPU. Ở đây peak lệch xuống `-t 7` (nửa số core
-vật lý) và toàn bộ dải chênh lệch chỉ 1.27x (so với spread lớn hơn nhiều nếu CPU-bound),
-vì cơ chế mà deck giả định — matmul memory-bandwidth-bound scale theo thread count đến
-core count — không áp dụng khi Metal offload đã chuyển áp lực bandwidth đó sang đường
-unified-memory riêng của GPU. Bài học cho phần cứng này: thread count là knob bậc hai
-dưới GPU offload (chỉ 1.07x); thứ thật sự tạo speedup lớn sẽ là thứ đổi khối lượng công
-việc GPU — quantization, hay số slot `--parallel` (xem §3, §6) — không phải `-t`.
+**Kết quả này khác với kỳ vọng từ deck**: deck mô tả đỉnh nằm ở đúng số core vật lý rồi
+tụt dần sau đó — đúng cho trường hợp decode chạy trên CPU. Còn ở máy em, đỉnh lại lệch
+xuống `-t 7` (chỉ bằng nửa số core vật lý), và cả dải chênh lệch cũng chỉ có 1.27x
+thôi — nhỏ hơn nhiều so với mức spread mà một workload CPU-bound thật sự sẽ cho. Lý do
+là cơ chế mà deck giả định (matmul memory-bandwidth-bound, scale theo thread count đến
+hết số core) không còn áp dụng nữa một khi Metal offload đã chuyển hết áp lực bandwidth
+đó sang đường unified-memory riêng của GPU. Bài học em rút ra cho phần cứng này là:
+thread count chỉ là một knob bậc hai dưới GPU offload (có 1.07x thôi), còn cái thật sự
+tạo ra speedup lớn sẽ là thứ nào đó đổi được khối lượng công việc GPU — như quantization,
+hay số slot `--parallel` (xem thêm §3, §6) — chứ không phải `-t`.
 
 ---
 
@@ -166,39 +176,45 @@ speedup: 2.26×
 
 **Điều này nói lên gì mà deck chưa nói:**
 
-Bốn thí nghiệm bonus kể cùng một câu chuyện từ bốn góc khác nhau: **trên phần cứng
-này, thứ quyết định tốc độ là có offload lên GPU hay không, không phải cách compile.**
-B2 cho con số sạch nhất: 2.26x từ CPU-only sang full Metal offload, tăng đơn điệu
-không có điểm gãy vì unified memory không có ngưỡng VRAM để tràn (xem file bonus). B1
-lại cho kết quả ngược kỳ vọng — build "native" cho đúng CPU này (`-DGGML_NATIVE=ON`)
-**chậm hơn** bản prebuilt 0.82x, vì NEON đã là baseline bắt buộc trên mọi binary
-arm64 macOS (không giống AVX2/AVX-512 trên x86, không có ISA rộng hơn để "native"
-mở khoá), nên cờ compile không có nhiều dư địa để ăn điểm trên chip này.
+Bốn thí nghiệm bonus em làm hoá ra lại kể cùng một câu chuyện, chỉ nhìn từ bốn góc
+khác nhau: **trên phần cứng của em, thứ quyết định tốc độ là có offload lên GPU hay
+không, chứ không phải compile kiểu gì.** B2 cho con số sạch nhất — 2.26x khi đi từ
+CPU-only sang full Metal offload, tăng đơn điệu không có điểm gãy nào, vì unified
+memory ở đây không có ngưỡng VRAM để tràn (chi tiết em ghi trong file bonus). Còn B1
+thì lại cho kết quả ngược hẳn với những gì em nghĩ ban đầu — build "native" riêng cho
+đúng con CPU này (`-DGGML_NATIVE=ON`) lại **chậm hơn** bản prebuilt tới 0.82x. Lý do
+là NEON vốn đã là baseline bắt buộc trên mọi binary arm64 macOS rồi, không giống
+AVX2/AVX-512 bên x86 — không có ISA rộng hơn nào để cờ "native" mở khoá thêm, nên trên
+con chip này, compile riêng gần như chẳng có gì để ăn điểm cả.
 
-C1 (MTP speculative decoding) cũng cho kết quả âm — chậm hơn baseline 0.70-0.71x —
-vì tỉ lệ chấp nhận draft chỉ ~30-35% (đo trực tiếp từ log server), nên chi phí verify
-+ forward pass của draft model vượt quá lượng compute tiết kiệm được, nhất là khi
-target model vốn đã decode nhanh (single request, Metal). Đây đúng là trường hợp
-CHALLENGES.md cảnh báo — "production engine tắt spec decode ở batch size cao" — chỉ
-khác là ở đây ngưỡng đó bị vượt ngay từ batch size 1.
+C1 (MTP speculative decoding) cũng ra kết quả âm — chậm hơn baseline 0.70-0.71x — vì
+tỉ lệ chấp nhận draft mà em đo trực tiếp từ log server chỉ có ~30-35% thôi, nên chi phí
+verify cộng với forward pass của draft model vượt quá phần compute tiết kiệm được,
+nhất là khi target model vốn đã decode khá nhanh rồi (single request, chạy Metal). Đây
+đúng kiểu tình huống mà CHALLENGES.md có cảnh báo trước — "production engine tắt spec
+decode khi batch size cao" — chỉ khác là ở máy em, ngưỡng đó bị vượt ngay từ batch
+size 1 luôn.
 
-C8 (semantic cache) cho một insight khác hẳn về *chất lượng*, không phải tốc độ: cache
-dùng embedding từ chat model pooled (không phải embedding model chuyên dụng) vừa bỏ
-sót true paraphrase (#3, #6 chỉ đạt sim 0.72-0.80, dưới ngưỡng 0.85) vừa false-hit một
-topic hoàn toàn mới (#7, sim 0.85). Không có ngưỡng nào sửa được cả hai lỗi cùng lúc —
-đó là bằng chứng cụ thể cho lý do vì sao cần embedding model chuyên dụng, không phải
-tái dùng chat model, cho semantic cache thật.
+C8 (semantic cache) thì cho em một insight hoàn toàn khác, về *chất lượng* chứ không
+phải tốc độ: cache dùng embedding lấy từ chat model pooled (không phải embedding model
+chuyên dụng) nên vừa bỏ sót true paraphrase thật (#3, #6 chỉ đạt sim 0.72-0.80, dưới
+ngưỡng 0.85), vừa false-hit một topic hoàn toàn mới (#7, sim 0.85). Em thử nghĩ không
+ra ngưỡng nào sửa được cả hai lỗi cùng lúc — và chính đó là bằng chứng cụ thể cho việc
+tại sao semantic cache thật sự cần một embedding model chuyên dụng, chứ không thể tái
+dùng chat model như vầy được.
 
 ---
 
 ## 7. Điều làm bạn ngạc nhiên nhất  *(optional)*
 
-Speculative decoding (C1) làm decode **chậm hơn** (0.70x), không nhanh hơn — trái
-ngược hoàn toàn với con số 3-6.5x của EAGLE-3 trong deck. Bất ngờ thứ hai: build từ
-source "tối ưu cho đúng CPU của tôi" lại thua bản prebuilt (0.82x), vì trên Apple
-Silicon NEON đã là sàn bắt buộc chứ không phải thứ `-DGGML_NATIVE` có thể mở khoá
-thêm — hai lần liên tiếp "làm nhiều hơn" (thêm draft model, compile riêng cho CPU)
-hoá ra chậm hơn "làm ít hơn" (baseline, prebuilt binary).
+Điều làm em bất ngờ nhất là speculative decoding (C1) lại làm decode **chậm hơn**
+(0.70x), chứ không nhanh hơn — ngược hẳn với con số 3-6.5x của EAGLE-3 mà deck nêu.
+Bất ngờ thứ hai là build từ source mà em kỳ vọng "tối ưu riêng cho đúng CPU của mình"
+lại thua bản prebuilt (0.82x), vì hoá ra trên Apple Silicon thì NEON đã là cái sàn bắt
+buộc rồi, chứ không phải thứ mà `-DGGML_NATIVE` có thể mở khoá thêm được. Vui nhất là
+cả hai lần này đều rơi vào tình huống giống nhau: "làm nhiều hơn" (thêm draft model,
+compile riêng cho CPU) lại hoá ra chậm hơn "làm ít hơn" (cứ dùng baseline, prebuilt
+binary sẵn có).
 
 ---
 
